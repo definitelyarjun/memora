@@ -1,4 +1,7 @@
-"""Tests for Module 1 — Data Ingestion."""
+"""Tests for Module 1 — Startup Ingestion & Profiling.
+
+FoundationIQ 3.0 (Startup Edition)
+"""
 
 from __future__ import annotations
 
@@ -11,36 +14,43 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.schemas.ingestion import IssueType, WorkflowDiagram, WorkflowStep
+from app.schemas.ingestion import (
+    IssueType,
+    StartupProfile,
+    StartupProfileAnalysis,
+)
 
 client = TestClient(app)
 
-SAMPLE_METADATA = json.dumps(
-    {"industry": "Retail", "num_employees": 25, "tools_used": ["Excel", "WhatsApp"]}
-)
+# ---------------------------------------------------------------------------
+# Shared fixtures
+# ---------------------------------------------------------------------------
 
-WORKFLOW_TEXT = """
-1. Customer places order via phone
-2. Sales manager writes order in notebook
-3. Admin enters order into Excel
-4. Warehouse checks stock manually
-5. Delivery scheduled via WhatsApp
-"""
+ONBOARDING_FORM = {
+    "company_name": "TestCo SaaS",
+    "sub_type": "SaaS",
+    "mrr_last_3_months": json.dumps([80000, 95000, 110000]),
+    "monthly_growth_goal_pct": 15.0,
+    "patience_months": 6,
+    "current_tech_stack": "Stripe, Zapier, Google Sheets",
+    "num_employees": 12,
+    "industry": "Technology",
+}
 
-# Fake WorkflowDiagram returned by the mocked LLM so tests don't hit the API
-_MOCK_DIAGRAM = WorkflowDiagram(
-    steps=[
-        WorkflowStep(step_number=1, description="Customer places order", actor="Customer", step_type="Manual"),
-        WorkflowStep(step_number=2, description="Entry into Excel", actor="Admin", step_type="Manual", tool_used="Excel"),
+_MOCK_PROFILE_ANALYSIS = StartupProfileAnalysis(
+    mrr_trend="Growing",
+    mrr_mom_growth_pct=17.2,
+    growth_gap="Actual growth (~17%) exceeds the 15% target — on track.",
+    tech_stack_maturity="Developing",
+    key_observations=[
+        "MRR shows healthy upward trend over 3 months",
+        "Small team of 12 — high automation potential per head",
+        "Tech stack includes Stripe (billing) but lacks CRM",
     ],
-    mermaid_diagram="flowchart TD\n    A[Customer places order] --> B[Admin: Entry into Excel]",
-    summary="A fully manual order processing workflow with no automation.",
+    recommended_focus_areas=["Sales cycle automation", "Churn monitoring"],
+    executive_summary="TestCo is a growing SaaS startup with strong MRR momentum.",
 )
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _csv_bytes(df: pd.DataFrame) -> bytes:
     buf = io.BytesIO()
@@ -48,22 +58,29 @@ def _csv_bytes(df: pd.DataFrame) -> bytes:
     return buf.getvalue()
 
 
-def _excel_bytes(df: pd.DataFrame) -> bytes:
-    buf = io.BytesIO()
-    df.to_excel(buf, index=False, engine="openpyxl")
-    return buf.getvalue()
+def _sample_org_chart() -> pd.DataFrame:
+    return pd.DataFrame({
+        "role": ["Engineer", "Designer", "PM", "Sales Rep"],
+        "department": ["Engineering", "Design", "Product", "Sales"],
+        "salary": [120000, 90000, 110000, 85000],
+    })
 
 
-def _sample_df() -> pd.DataFrame:
-    """DataFrame with intentionally messy column names (spaces, mixed case)."""
-    return pd.DataFrame(
-        {
-            "Order ID": [1, 2, 3],
-            "Customer Name": ["Alice", "Bob", "Charlie"],
-            "Order Date": ["15/01/2025", "20/01/2025", "25/01/2025"],
-            "Amount": [100.5, 200.0, 150.75],
-        }
-    )
+def _sample_expenses() -> pd.DataFrame:
+    return pd.DataFrame({
+        "category": ["AWS", "Slack", "Zoom", "Google Workspace"],
+        "amount": [15000, 3000, 2000, 5000],
+        "month": ["2025-01", "2025-01", "2025-01", "2025-01"],
+    })
+
+
+def _sample_sales_inquiries() -> pd.DataFrame:
+    return pd.DataFrame({
+        "inquiry_date": ["2025-01-01", "2025-01-05", "2025-01-10"],
+        "payment_date": ["2025-01-15", "2025-01-20", None],
+        "repeat_customer": ["Yes", "No", "Yes"],
+        "amount": [50000, 30000, 25000],
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -79,221 +96,305 @@ def test_health():
 
 
 # ---------------------------------------------------------------------------
-# Test: Successful CSV upload — raw columns preserved, issues flagged
+# Test: Successful ingestion with all 3 files
 # ---------------------------------------------------------------------------
 
-@patch("app.routers.ingestion.analyse_workflow", return_value=_MOCK_DIAGRAM)
-def test_ingest_csv_success(mock_llm):
-    df = _sample_df()
-    csv_data = _csv_bytes(df)
+@patch("app.routers.ingestion.analyse_startup_profile", return_value=_MOCK_PROFILE_ANALYSIS)
+def test_startup_ingest_all_files(mock_llm):
+    org = _csv_bytes(_sample_org_chart())
+    exp = _csv_bytes(_sample_expenses())
+    sales = _csv_bytes(_sample_sales_inquiries())
 
     resp = client.post(
-        "/api/v1/ingest/tabular",
-        files={"file": ("orders.csv", csv_data, "text/csv")},
-        data={"workflow_text": WORKFLOW_TEXT, "company_metadata": SAMPLE_METADATA},
+        "/api/v1/ingest/startup",
+        files={
+            "org_chart_file": ("org_chart.csv", io.BytesIO(org), "text/csv"),
+            "expenses_file": ("expenses.csv", io.BytesIO(exp), "text/csv"),
+            "sales_inquiries_file": ("sales_inquiries.csv", io.BytesIO(sales), "text/csv"),
+        },
+        data=ONBOARDING_FORM,
     )
 
     assert resp.status_code == 200
     body = resp.json()
 
-    # Row/column counts correct
-    assert body["row_count"] == 3
-    assert body["column_count"] == 4
     assert body["session_id"]
+    assert body["startup_profile"]["company_name"] == "TestCo SaaS"
+    assert body["startup_profile"]["sub_type"] == "SaaS"
+    assert body["startup_profile"]["mrr_last_3_months"] == [80000, 95000, 110000]
+    assert set(body["files_uploaded"]) == {"org_chart", "expenses", "sales_inquiries"}
+    assert body["total_rows"] == 4 + 4 + 3  # org(4) + exp(4) + sales(3)
 
-    # Column NAMES preserved as-is (no renaming in Module 1)
-    col_names = [c["name"] for c in body["columns"]]
-    assert "Order ID" in col_names
-    assert "Customer Name" in col_names
-
-    # missing_pct present
-    for col in body["columns"]:
-        assert "missing_pct" in col
-
-    # Company metadata intact
-    assert body["company_metadata"]["industry"] == "Retail"
+    # Per-file summaries present
+    assert body["org_chart"] is not None
+    assert body["org_chart"]["row_count"] == 4
+    assert body["expenses"] is not None
+    assert body["expenses"]["row_count"] == 4
+    assert body["sales_inquiries"] is not None
+    assert body["sales_inquiries"]["row_count"] == 3
 
 
 # ---------------------------------------------------------------------------
-# Test: Successful Excel upload
+# Test: Ingestion with no files (onboarding only)
 # ---------------------------------------------------------------------------
 
-@patch("app.routers.ingestion.analyse_workflow", return_value=_MOCK_DIAGRAM)
-def test_ingest_excel_success(mock_llm):
-    df = _sample_df()
-    xlsx_data = _excel_bytes(df)
-
+@patch("app.routers.ingestion.analyse_startup_profile", return_value=_MOCK_PROFILE_ANALYSIS)
+def test_startup_ingest_no_files(mock_llm):
     resp = client.post(
-        "/api/v1/ingest/tabular",
-        files={"file": ("orders.xlsx", xlsx_data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        data={"workflow_text": WORKFLOW_TEXT, "company_metadata": SAMPLE_METADATA},
+        "/api/v1/ingest/startup",
+        data=ONBOARDING_FORM,
     )
 
     assert resp.status_code == 200
-    assert resp.json()["row_count"] == 3
+    body = resp.json()
+    assert body["session_id"]
+    assert body["files_uploaded"] == []
+    assert body["org_chart"] is None
+    assert body["expenses"] is None
+    assert body["sales_inquiries"] is None
+    assert body["total_rows"] == 0
+    assert body["total_issues"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Test: Only org_chart uploaded
+# ---------------------------------------------------------------------------
+
+@patch("app.routers.ingestion.analyse_startup_profile", return_value=_MOCK_PROFILE_ANALYSIS)
+def test_startup_ingest_org_chart_only(mock_llm):
+    org = _csv_bytes(_sample_org_chart())
+
+    resp = client.post(
+        "/api/v1/ingest/startup",
+        files={"org_chart_file": ("org_chart.csv", io.BytesIO(org), "text/csv")},
+        data=ONBOARDING_FORM,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["files_uploaded"] == ["org_chart"]
+    assert body["org_chart"]["row_count"] == 4
+    assert body["expenses"] is None
+    assert body["sales_inquiries"] is None
+
+
+# ---------------------------------------------------------------------------
+# Test: Profile analysis returned
+# ---------------------------------------------------------------------------
+
+@patch("app.routers.ingestion.analyse_startup_profile", return_value=_MOCK_PROFILE_ANALYSIS)
+def test_profile_analysis_returned(mock_llm):
+    resp = client.post(
+        "/api/v1/ingest/startup",
+        data=ONBOARDING_FORM,
+    )
+
+    body = resp.json()
+    pa = body["profile_analysis"]
+    assert pa is not None
+    assert pa["mrr_trend"] == "Growing"
+    assert pa["mrr_mom_growth_pct"] == 17.2
+    assert pa["tech_stack_maturity"] == "Developing"
+    assert len(pa["key_observations"]) >= 1
+    assert len(pa["recommended_focus_areas"]) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Test: LLM failure is non-fatal
+# ---------------------------------------------------------------------------
+
+@patch("app.routers.ingestion.analyse_startup_profile", side_effect=RuntimeError("No API key"))
+def test_ingest_succeeds_without_llm(mock_llm):
+    resp = client.post(
+        "/api/v1/ingest/startup",
+        data=ONBOARDING_FORM,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["profile_analysis"] is None
+
+
+# ---------------------------------------------------------------------------
+# Test: Invalid MRR JSON → 422
+# ---------------------------------------------------------------------------
+
+def test_invalid_mrr_json():
+    form = {**ONBOARDING_FORM, "mrr_last_3_months": "not-json"}
+    resp = client.post("/api/v1/ingest/startup", data=form)
+    assert resp.status_code == 422
+    assert "mrr_last_3_months" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Test: MRR wrong length → 422
+# ---------------------------------------------------------------------------
+
+def test_mrr_wrong_length():
+    form = {**ONBOARDING_FORM, "mrr_last_3_months": json.dumps([100, 200])}
+    resp = client.post("/api/v1/ingest/startup", data=form)
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Test: Invalid sub_type → 422
+# ---------------------------------------------------------------------------
+
+def test_invalid_sub_type():
+    form = {**ONBOARDING_FORM, "sub_type": "Biotech"}
+    resp = client.post("/api/v1/ingest/startup", data=form)
+    assert resp.status_code == 422
 
 
 # ---------------------------------------------------------------------------
 # Test: Unsupported file type → 400
 # ---------------------------------------------------------------------------
 
-def test_ingest_unsupported_file_type():
+def test_unsupported_file_type():
     resp = client.post(
-        "/api/v1/ingest/tabular",
-        files={"file": ("data.json", b'{"a":1}', "application/json")},
-        data={"workflow_text": WORKFLOW_TEXT, "company_metadata": SAMPLE_METADATA},
+        "/api/v1/ingest/startup",
+        files={"org_chart_file": ("org.json", io.BytesIO(b'{}'), "application/json")},
+        data=ONBOARDING_FORM,
     )
-
     assert resp.status_code == 400
     assert "Unsupported file type" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
-# Test: Missing workflow_text → 422
+# Test: Missing expected columns flagged
 # ---------------------------------------------------------------------------
 
-def test_ingest_missing_workflow_text():
-    df = _sample_df()
-    csv_data = _csv_bytes(df)
+@patch("app.routers.ingestion.analyse_startup_profile", return_value=_MOCK_PROFILE_ANALYSIS)
+def test_missing_expected_columns_flagged(mock_llm):
+    """Upload an org_chart without the 'salary' column — should flag it."""
+    bad_org = pd.DataFrame({
+        "role": ["Engineer", "Designer"],
+        "department": ["Engineering", "Design"],
+        # 'salary' column missing
+    })
+    csv_data = _csv_bytes(bad_org)
 
     resp = client.post(
-        "/api/v1/ingest/tabular",
-        files={"file": ("orders.csv", csv_data, "text/csv")},
-        data={"company_metadata": SAMPLE_METADATA},
-    )
-
-    assert resp.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# Test: Inconsistent column names are flagged (not renamed)
-# ---------------------------------------------------------------------------
-
-@patch("app.routers.ingestion.analyse_workflow", return_value=_MOCK_DIAGRAM)
-def test_ingest_flags_inconsistent_column_names(mock_llm):
-    df = _sample_df()  # has "Order ID", "Customer Name" — spaces + mixed case
-    csv_data = _csv_bytes(df)
-
-    resp = client.post(
-        "/api/v1/ingest/tabular",
-        files={"file": ("orders.csv", csv_data, "text/csv")},
-        data={"workflow_text": WORKFLOW_TEXT, "company_metadata": SAMPLE_METADATA},
-    )
-
-    body = resp.json()
-    issue_types = [i["issue_type"] for i in body["data_issues"]]
-    assert "inconsistent_column_names" in issue_types
-
-    # Columns are still the originals — NOT renamed
-    col_names = [c["name"] for c in body["columns"]]
-    assert "Order ID" in col_names
-
-
-# ---------------------------------------------------------------------------
-# Test: Missing values are flagged with severity
-# ---------------------------------------------------------------------------
-
-@patch("app.routers.ingestion.analyse_workflow", return_value=_MOCK_DIAGRAM)
-def test_ingest_flags_missing_values(mock_llm):
-    df = _sample_df()
-    df.loc[0, "Amount"] = None  # introduce a missing value
-    csv_data = _csv_bytes(df)
-
-    resp = client.post(
-        "/api/v1/ingest/tabular",
-        files={"file": ("orders.csv", csv_data, "text/csv")},
-        data={"workflow_text": WORKFLOW_TEXT, "company_metadata": SAMPLE_METADATA},
-    )
-
-    body = resp.json()
-    missing_issues = [
-        i for i in body["data_issues"] if i["issue_type"] == "missing_values"
-    ]
-    assert missing_issues, "Expected at least one missing_values issue"
-    assert missing_issues[0]["severity"] in ("low", "medium", "high")
-
-
-# ---------------------------------------------------------------------------
-# Test: Date-like column stored as string is flagged, NOT parsed
-# ---------------------------------------------------------------------------
-
-@patch("app.routers.ingestion.analyse_workflow", return_value=_MOCK_DIAGRAM)
-def test_ingest_flags_unparsed_date_columns(mock_llm):
-    df = _sample_df()  # "Order Date" is a string column
-    csv_data = _csv_bytes(df)
-
-    resp = client.post(
-        "/api/v1/ingest/tabular",
-        files={"file": ("orders.csv", csv_data, "text/csv")},
-        data={"workflow_text": WORKFLOW_TEXT, "company_metadata": SAMPLE_METADATA},
-    )
-
-    body = resp.json()
-
-    # "Order Date" column dtype must still be object (string) — not datetime
-    date_col = next(c for c in body["columns"] if c["name"] == "Order Date")
-    assert "datetime" not in date_col["dtype"], "Module 1 must NOT parse dates"
-
-    # But the issue should be flagged
-    unparsed = [i for i in body["data_issues"] if i["issue_type"] == "unparsed_dates"]
-    assert unparsed, "Expected unparsed_dates issue for 'Order Date' column"
-
-
-# ---------------------------------------------------------------------------
-# Test: Workflow analysis returned from LLM
-# ---------------------------------------------------------------------------
-
-@patch("app.routers.ingestion.analyse_workflow", return_value=_MOCK_DIAGRAM)
-def test_ingest_workflow_analysis_returned(mock_llm):
-    df = _sample_df()
-    csv_data = _csv_bytes(df)
-
-    resp = client.post(
-        "/api/v1/ingest/tabular",
-        files={"file": ("orders.csv", csv_data, "text/csv")},
-        data={"workflow_text": WORKFLOW_TEXT, "company_metadata": SAMPLE_METADATA},
-    )
-
-    body = resp.json()
-    wa = body["workflow_analysis"]
-    assert wa is not None
-    assert len(wa["steps"]) == 2
-    assert wa["mermaid_diagram"].startswith("flowchart")
-    assert wa["summary"]
-
-
-# ---------------------------------------------------------------------------
-# Test: LLM failure is non-fatal — response still succeeds
-# ---------------------------------------------------------------------------
-
-@patch("app.routers.ingestion.analyse_workflow", side_effect=RuntimeError("No API key"))
-def test_ingest_succeeds_without_llm(mock_llm):
-    df = _sample_df()
-    csv_data = _csv_bytes(df)
-
-    resp = client.post(
-        "/api/v1/ingest/tabular",
-        files={"file": ("orders.csv", csv_data, "text/csv")},
-        data={"workflow_text": WORKFLOW_TEXT, "company_metadata": SAMPLE_METADATA},
+        "/api/v1/ingest/startup",
+        files={"org_chart_file": ("org_chart.csv", io.BytesIO(csv_data), "text/csv")},
+        data=ONBOARDING_FORM,
     )
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["workflow_analysis"] is None  # gracefully absent
+    org = body["org_chart"]
+    issue_types = [i["issue_type"] for i in org["data_issues"]]
+    assert "missing_expected_columns" in issue_types
 
 
 # ---------------------------------------------------------------------------
-# Test: Invalid metadata JSON → 422
+# Test: Missing values flagged in sales_inquiries
 # ---------------------------------------------------------------------------
 
-def test_ingest_invalid_metadata_json():
-    df = _sample_df()
+@patch("app.routers.ingestion.analyse_startup_profile", return_value=_MOCK_PROFILE_ANALYSIS)
+def test_missing_values_flagged(mock_llm):
+    sales = _sample_sales_inquiries()  # has 1 null in payment_date
+    csv_data = _csv_bytes(sales)
+
+    resp = client.post(
+        "/api/v1/ingest/startup",
+        files={"sales_inquiries_file": ("sales.csv", io.BytesIO(csv_data), "text/csv")},
+        data=ONBOARDING_FORM,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    issues = body["sales_inquiries"]["data_issues"]
+    missing = [i for i in issues if i["issue_type"] == "missing_values"]
+    assert missing, "Expected missing_values issue for payment_date column"
+
+
+# ---------------------------------------------------------------------------
+# Test: Duplicate rows flagged
+# ---------------------------------------------------------------------------
+
+@patch("app.routers.ingestion.analyse_startup_profile", return_value=_MOCK_PROFILE_ANALYSIS)
+def test_duplicate_rows_flagged(mock_llm):
+    df = pd.DataFrame({
+        "category": ["AWS", "AWS", "Slack"],
+        "amount": [15000, 15000, 3000],
+        "month": ["2025-01", "2025-01", "2025-01"],
+    })
     csv_data = _csv_bytes(df)
 
     resp = client.post(
-        "/api/v1/ingest/tabular",
-        files={"file": ("orders.csv", csv_data, "text/csv")},
-        data={"workflow_text": WORKFLOW_TEXT, "company_metadata": "not-json"},
+        "/api/v1/ingest/startup",
+        files={"expenses_file": ("expenses.csv", io.BytesIO(csv_data), "text/csv")},
+        data=ONBOARDING_FORM,
     )
 
-    assert resp.status_code == 422
+    assert resp.status_code == 200
+    body = resp.json()
+    issues = body["expenses"]["data_issues"]
+    dup_issues = [i for i in issues if i["issue_type"] == "duplicate_rows"]
+    assert dup_issues, "Expected duplicate_rows issue"
+
+
+# ---------------------------------------------------------------------------
+# Test: Unparsed date columns flagged
+# ---------------------------------------------------------------------------
+
+@patch("app.routers.ingestion.analyse_startup_profile", return_value=_MOCK_PROFILE_ANALYSIS)
+def test_unparsed_dates_flagged(mock_llm):
+    sales = _sample_sales_inquiries()
+    csv_data = _csv_bytes(sales)
+
+    resp = client.post(
+        "/api/v1/ingest/startup",
+        files={"sales_inquiries_file": ("sales.csv", io.BytesIO(csv_data), "text/csv")},
+        data=ONBOARDING_FORM,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    issues = body["sales_inquiries"]["data_issues"]
+    unparsed = [i for i in issues if i["issue_type"] == "unparsed_dates"]
+    assert unparsed, "Expected unparsed_dates issue for date columns"
+
+
+# ---------------------------------------------------------------------------
+# Test: Tech stack parsed correctly
+# ---------------------------------------------------------------------------
+
+@patch("app.routers.ingestion.analyse_startup_profile", return_value=_MOCK_PROFILE_ANALYSIS)
+def test_tech_stack_parsing(mock_llm):
+    resp = client.post(
+        "/api/v1/ingest/startup",
+        data=ONBOARDING_FORM,
+    )
+
+    body = resp.json()
+    stack = body["startup_profile"]["current_tech_stack"]
+    assert "Stripe" in stack
+    assert "Zapier" in stack
+    assert "Google Sheets" in stack
+
+
+# ---------------------------------------------------------------------------
+# Test: Session ID can be retrieved
+# ---------------------------------------------------------------------------
+
+@patch("app.routers.ingestion.analyse_startup_profile", return_value=_MOCK_PROFILE_ANALYSIS)
+def test_session_retrievable(mock_llm):
+    org = _csv_bytes(_sample_org_chart())
+
+    resp = client.post(
+        "/api/v1/ingest/startup",
+        files={"org_chart_file": ("org_chart.csv", io.BytesIO(org), "text/csv")},
+        data=ONBOARDING_FORM,
+    )
+
+    sid = resp.json()["session_id"]
+
+    # Verify session data is stored via the quality endpoint (requires session)
+    from app.core.session_store import session_store
+    entry = session_store.get(sid)
+    assert entry is not None
+    assert entry.startup_profile["company_name"] == "TestCo SaaS"
+    assert entry.org_chart_df is not None
+    assert len(entry.org_chart_df) == 4

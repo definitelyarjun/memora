@@ -1,137 +1,164 @@
-"""Pydantic models for Module 4 — Automation Opportunity Detector.
+"""Pydantic models for Module 4 — Organizational Role & Automation Auditor.
 
-Each workflow step is evaluated against a rule-based classifier that
-determines whether it is an automation candidate, what type of automation
-applies, and how confident the assessment is.
+Analyses org_chart.csv to map every employee's role to its automation
+potential, then calculates how much more revenue the same team could
+handle once admin/repetitive tasks are automated.
 
-Automation types
-----------------
-  RPA            Robotic Process Automation — repetitive, rule-based, structured data
-  Digital Form   Replace paper/verbal handoff with a digital form or app
-  API Integration Connect existing tools via APIs to eliminate manual transfer
-  AI/ML          Requires machine-learning model (needs high data readiness)
-  Decision Engine Rule-based decision that can be codified (if/else logic)
-  Not Recommended Step is inherently human or data readiness is too low
+Key Metrics
+-----------
+  Metric 3  Role Automation Potential (% of each role that is automatable)
+  Metric 8  Revenue Per Employee (RPE) Lift — Current MRR ÷ Headcount
+             vs Projected MRR ÷ Headcount after growth (automation enables
+             the *same* team to handle far more revenue without new hires)
 
-Confidence scoring
-------------------
-  High     ≥ 0.80  — strong signal from keywords, step type, and data readiness
-  Medium   ≥ 0.50  — likely automatable but some ambiguity
-  Low      < 0.50  — weak signal, needs human review
+Vulnerability Levels
+--------------------
+  High    ≥ 60%  of tasks automatable — role needs significant upskilling
+  Medium  30–59% automatable — moderate upskilling recommended
+  Low     < 30%  automatable — mostly strategic/human-judgment tasks
 """
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 
-AutomationType = Literal[
-    "RPA",
-    "Digital Form",
-    "API Integration",
-    "AI/ML",
-    "Decision Engine",
-    "Not Recommended",
-]
+class RoleAnalysis(BaseModel):
+    """Automation audit result for a single employee / role."""
 
-ConfidenceLevel = Literal["High", "Medium", "Low"]
+    employee_id: str
+    name: str
+    job_title: str
+    department: str
+    monthly_salary_inr: float
+    hours_per_week: float
 
-
-class AutomationCandidate(BaseModel):
-    """Automation analysis for a single workflow step."""
-
-    step_number: int
-    description: str
-    actor: str
-    current_step_type: Literal["Manual", "Automated", "Decision", "Unknown"]
-    tool_used: str | None = None
-
-    # --- Classification output ---
-    is_candidate: bool = Field(
+    # --- Metric 3: Role Automation Potential ---
+    automation_pct: float = Field(
         ...,
-        description="Whether this step is a viable automation candidate",
-    )
-    automation_type: AutomationType = Field(
-        ...,
-        description="Recommended automation approach for this step",
-    )
-    confidence: float = Field(
-        ...,
-        description="Confidence score 0.0–1.0 for automation recommendation",
+        description="Percentage of this role's tasks that are automatable (0–100)",
         ge=0.0,
-        le=1.0,
+        le=100.0,
     )
-    confidence_level: ConfidenceLevel
-    reasoning: str = Field(
-        ...,
-        description="Human-readable explanation of why this step was classified this way",
+    automatable_tasks: list[str] = Field(
+        default_factory=list,
+        description="Specific task types within this role that automation can handle",
     )
-    estimated_effort: Literal["Low", "Medium", "High"] = Field(
+    vulnerability_level: str = Field(
         ...,
-        description="Relative effort to implement this automation",
+        description="High (≥60%) | Medium (30–59%) | Low (<30%)",
     )
-    priority: Literal["Critical", "High", "Medium", "Low", "Skip"] = Field(
+    upskilling_rec: str = Field(
         ...,
-        description="Implementation priority based on impact × feasibility",
+        description="What this person should focus on once admin tasks are automated",
+    )
+    hours_saved_per_week: float = Field(
+        ...,
+        description="Estimated hours per week freed up by automation for this role",
     )
 
 
-class AutomationSummary(BaseModel):
-    """Aggregate statistics for the automation report."""
+class RPEMetrics(BaseModel):
+    """Revenue Per Employee metrics for Metric 8."""
 
-    total_steps: int
-    automatable_steps: int
-    already_automated: int
-    not_recommended: int
-    automation_coverage: float = Field(
+    current_mrr: float = Field(
+        ...,
+        description="Latest month's MRR from startup_profile (INR)",
+    )
+    headcount: int = Field(
+        ...,
+        description="Total employees from org_chart.csv",
+    )
+    current_rpe_monthly: float = Field(
+        ...,
+        description="Current MRR ÷ headcount (INR per employee per month)",
+    )
+    projected_mrr: float = Field(
         ...,
         description=(
-            "Fraction of steps that are either already automated or "
-            "identified as automation candidates. 1.0 = full coverage."
+            "Projected MRR after patience_months of growth at monthly_growth_goal_pct "
+            "— automation enables same team to handle this revenue"
         ),
-        ge=0.0,
-        le=1.0,
     )
-    avg_confidence: float = Field(
+    projected_rpe_monthly: float = Field(
         ...,
-        description="Mean confidence across all candidates (excludes non-candidates)",
-        ge=0.0,
-        le=1.0,
+        description="Projected MRR ÷ same headcount (INR per employee per month)",
     )
-    by_type: dict[str, int] = Field(
-        default_factory=dict,
-        description="Count of candidates grouped by AutomationType",
+    rpe_lift_pct: float = Field(
+        ...,
+        description="Metric 8: ((projected_rpe - current_rpe) / current_rpe) × 100",
     )
-    by_priority: dict[str, int] = Field(
-        default_factory=dict,
-        description="Count of candidates grouped by priority level",
+    rpe_lift_inr: float = Field(
+        ...,
+        description="Absolute RPE lift in INR per employee per month",
+    )
+    growth_months_used: int = Field(
+        ...,
+        description="Number of months of growth modelled (from patience_months)",
+    )
+    monthly_growth_rate_pct: float = Field(
+        ...,
+        description="Monthly growth rate used for projection",
     )
 
 
 class AutomationReport(BaseModel):
-    """Full automation opportunity report for a session."""
+    """Full role & automation audit for a session."""
 
     session_id: str
-    ai_readiness_score: float = Field(
+    source_file: str = "org_chart.csv"
+    total_employees: int
+
+    # --- Per-role results ---
+    roles: list[RoleAnalysis] = Field(default_factory=list)
+
+    # --- Aggregate: Metric 3 ---
+    avg_automation_pct: float = Field(
         ...,
-        description="Carried forward from Module 2 quality report",
+        description="Mean automation potential across all roles (0–100)",
     )
-    readiness_level: str
-
-    # --- Per-step analysis -------------------------------------------------
-    candidates: list[AutomationCandidate] = Field(default_factory=list)
-
-    # --- Aggregate ---------------------------------------------------------
-    summary: AutomationSummary
-
-    # --- Actionable guidance -----------------------------------------------
-    top_recommendations: list[str] = Field(
-        default_factory=list,
-        description="Up to 5 prioritised automation recommendations",
+    high_vulnerability_count: int = Field(
+        ...,
+        description="Roles with automation_pct ≥ 60%",
     )
-    quick_wins: list[str] = Field(
-        default_factory=list,
-        description="Steps that can be automated with minimal effort",
+    medium_vulnerability_count: int = Field(
+        ...,
+        description="Roles with 30% ≤ automation_pct < 60%",
     )
+    low_vulnerability_count: int = Field(
+        ...,
+        description="Roles with automation_pct < 30%",
+    )
+    top_automatable_role: str = Field(
+        ...,
+        description="Job title with highest automation potential",
+    )
+    top_automatable_pct: float = Field(
+        ...,
+        description="Automation % of the most-automatable role",
+    )
+    total_hours_saved_per_week: float = Field(
+        ...,
+        description="Sum of hours_saved_per_week across all employees",
+    )
+
+    # --- Aggregate: Metric 8 ---
+    rpe_metrics: RPEMetrics
+
+    # --- Verdict.py compatibility ---
+    # automation_coverage = avg_automation_pct / 100 (a 0-1 score used by
+    # the overall readiness composite in verdict.py)
+    automation_coverage: float = Field(
+        ...,
+        description="avg_automation_pct / 100 — used as a 0-1 signal for the overall score",
+        ge=0.0,
+        le=1.0,
+    )
+
+    # --- Guidance ---
+    recommendations: list[str] = Field(default_factory=list)
+    mermaid_chart: str = Field(
+        default="",
+        description="Mermaid flowchart showing roles grouped by vulnerability level",
+    )
+    warnings: list[str] = Field(default_factory=list)

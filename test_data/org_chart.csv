@@ -1,0 +1,11 @@
+Employee_ID,Name,Job_Title,Department,Monthly_Salary_INR,Hours_Per_Week
+EMP001,Rahul Sharma,Founder & CEO,Executive,150000,60
+EMP002,Priya Menon,CTO,Engineering,140000,50
+EMP003,Amit Patel,Senior Developer,Engineering,110000,40
+EMP004,Neha Gupta,Junior Developer,Engineering,60000,40
+EMP005,Vikram Singh,Sales Director,Sales,120000,45
+EMP006,Sanjay Kumar,SDR (Sales Dev Rep),Sales,45000,45
+EMP007,Anjali Desai,SDR (Sales Dev Rep),Sales,45000,45
+EMP008,Rohan Das,Customer Support Exec,Operations,35000,40
+EMP009,Kavita Reddy,Customer Support Exec,Operations,35000,40
+EMP010,Meera Nair,HR & Payroll Admin,Operations,40000,40

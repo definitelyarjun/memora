@@ -1,11 +1,12 @@
-"""API router for Module 4 — Automation Opportunity Detector.
+"""API router for Module 4 — Organizational Role & Automation Auditor.
 
 Endpoint:
-    POST /api/v1/analyze/automation
-        - Accepts a session_id that already has workflow_analysis (Module 1a)
-          and quality_report (Module 2) in the session store
-        - Classifies each workflow step as an automation candidate
-        - Writes the AutomationReport back into the session store
+    POST /api/v1/analyze/role-audit
+        - Accepts a JSON body with session_id
+        - Reads org_chart.csv from the session (uploaded in Module 1)
+        - Maps every job title to automation potential (rules-based, no LLM)
+        - Calculates Metric 3 (Role Automation %) and Metric 8 (RPE Lift)
+        - Writes AutomationReport back into session as automation_report
         - Returns AutomationReport
 """
 
@@ -13,7 +14,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from app.core.session_store import session_store
 from app.schemas.automation import AutomationReport
@@ -21,51 +23,54 @@ from app.services.automation import compute_automation_report
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/analyze", tags=["Analysis — Automation"])
+router = APIRouter(prefix="/api/v1/analyze", tags=["Analysis — Role Auditor"])
 
 
-@router.post("/automation", response_model=AutomationReport)
-def analyze_automation(
-    session_id: str = Form(..., description="session_id with workflow + quality report"),
-) -> AutomationReport:
-    """Detect automation opportunities across the company's workflow.
+class RoleAuditRequest(BaseModel):
+    session_id: str
+
+
+@router.post("/role-audit", response_model=AutomationReport)
+def role_audit(request: RoleAuditRequest) -> AutomationReport:
+    """Audit every role in the org chart for automation potential.
 
     Prerequisites:
-      1. Run Module 1a (POST /ingest/tabular) with a workflow description
-      2. Run Module 2  (POST /analyze/quality)
+      - Run Module 1 (POST /ingest/startup) with org_chart.csv uploaded
 
-    For each workflow step the engine determines:
-      - Whether it's an automation candidate
-      - What type of automation applies (RPA, Digital Form, API, AI/ML, Decision Engine)
-      - Confidence score + human-readable reasoning
-      - Implementation effort and priority
+    For each employee the engine:
+      - Matches the job title to a curated automation-potential database
+      - Assigns a vulnerability level (High / Medium / Low)
+      - Calculates hours saved per week (Metric 3)
 
-    All classification is deterministic (rule-based keyword matching).
-    No LLM call is made.
+    Also computes:
+      - RPE Lift: how much revenue per employee grows if the same team
+        handles projected MRR without new hires (Metric 8)
+
+    All classification is deterministic (rule-based). No LLM call is made.
     """
-    entry = session_store.get(session_id)
+    entry = session_store.get(request.session_id)
     if entry is None:
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Session '{session_id}' not found or has expired. "
-                "Re-run Module 1a to start a new session."
+                f"Session '{request.session_id}' not found or has expired. "
+                "Re-run Module 1 to start a new session."
             ),
         )
 
     try:
-        report = compute_automation_report(session_id, entry)
+        report = compute_automation_report(request.session_id, entry)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    # Write report back into session for downstream modules
-    session_store.patch(session_id, automation_report=report)
+    session_store.patch(request.session_id, automation_report=report)
 
     logger.info(
-        "Automation report computed for session %s — %d/%d steps automatable",
-        session_id,
-        report.summary.automatable_steps,
-        report.summary.total_steps,
+        "Role audit computed for session %s — %d employees, avg automation %.0f%%, RPE lift %.0f%%",
+        request.session_id,
+        report.total_employees,
+        report.avg_automation_pct,
+        report.rpe_metrics.rpe_lift_pct,
     )
 
     return report

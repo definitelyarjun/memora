@@ -1,0 +1,10 @@
+{
+  "company_name": "SkillSphere India",
+  "sub_type": "SaaS",
+  "mrr_last_3_months": [1200000, 1350000, 1500000],
+  "monthly_growth_goal_pct": 15,
+  "patience_months": 3,
+  "current_tech_stack": ["Razorpay", "Zoho CRM", "Google Workspace", "Slack", "Mailchimp"],
+  "num_employees": 10,
+  "industry": "B2B EdTech SaaS"
+}

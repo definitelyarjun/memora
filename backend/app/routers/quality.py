@@ -1,11 +1,14 @@
-"""API router for Module 2 — Data Quality & AI Readiness Analyzer.
+"""API router for Module 2 — Data Quality & DPDP Compliance Scanner.
+
+FoundationIQ 3.0 (Startup Edition)
 
 Endpoint:
     POST /api/v1/analyze/quality
         - Accepts a session_id from Module 1
-        - Computes quality scores from the stored DataFrame + DataIssue list
+        - Computes quality scores from stored DataFrames + DataIssue list
+        - Runs DPDP PII compliance scan across all uploaded CSVs
         - Writes the QualityReport back into the session store
-        - Returns QualityReport
+        - Returns QualityReport with Metric 2 + Metric 6
 """
 
 from __future__ import annotations
@@ -20,35 +23,36 @@ from app.services.quality import compute_quality_report
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/analyze", tags=["Analysis — Quality"])
+router = APIRouter(prefix="/api/v1/analyze", tags=["Analysis — Quality & DPDP"])
 
 
 @router.post("/quality", response_model=QualityReport)
 def analyze_quality(
-    session_id: str = Form(..., description="session_id returned by /ingest/tabular"),
+    session_id: str = Form(..., description="session_id returned by /ingest/startup"),
 ) -> QualityReport:
-    """Score data quality and compute an AI Readiness score.
+    """Score data quality and run DPDP compliance scan.
 
-    Reads the raw DataFrame, DataIssue list, workflow_analysis, and
-    company_metadata stored by Module 1.  All calculations are
-    deterministic — no LLM call is made.
+    Reads all stored DataFrames (org_chart, expenses, sales_inquiries),
+    DataIssue list, workflow_analysis, and company_metadata from Module 1.
+    All calculations are deterministic — no LLM call is made.
 
     The resulting QualityReport is written back into the session store
     so that Modules 4, 5, and 7 can access it by session_id.
 
-    Scoring dimensions (6)
-    ----------------------
-    Data Quality (60 % combined):
-      Completeness            20 %   fraction of non-null cells
-      Deduplication           15 %   fraction of non-duplicate rows
-      Consistency             15 %   penalised by naming + whitespace issues
-      Structural Integrity    10 %   penalised by unparsed dates + mixed dtypes
+    Metrics produced:
+      Metric 2 — Data Quality Score (>0.85 = pass, no cleanup mandate)
+      Metric 6 — DPDP Risk Level (PII column scan)
 
-    Operational Readiness (40 % combined):
-      Process Digitisation    25 %   automated_steps / total_steps from workflow
-      Tool Maturity           15 %   scored by tool sophistication tier
+    Scoring dimensions (7):
+      Completeness              25 %
+      Deduplication             20 %
+      Consistency               15 %
+      Structural Integrity      10 %
+      Process Digitisation      15 %
+      Tool Maturity              5 %
+      Data Coverage             10 %
 
-    Readiness levels: High ≥0.80 · Moderate ≥0.60 · Low ≥0.40 · Critical <0.40
+    Quality levels: High ≥0.80 · Moderate ≥0.60 · Low ≥0.40 · Critical <0.40
     """
     entry = session_store.get(session_id)
     if entry is None:
@@ -56,7 +60,7 @@ def analyze_quality(
             status_code=404,
             detail=(
                 f"Session '{session_id}' not found or has expired. "
-                "Re-upload the file via /ingest/tabular to start a new session."
+                "Re-upload files via /ingest/startup to start a new session."
             ),
         )
 
@@ -69,10 +73,11 @@ def analyze_quality(
     session_store.patch(session_id, quality_report=report)
 
     logger.info(
-        "Quality report computed for session %s — AI readiness: %.2f (%s)",
+        "Quality report computed for session %s — score: %.2f (%s), DPDP risk: %s",
         session_id,
-        report.ai_readiness_score,
+        report.data_quality_score,
         report.readiness_level,
+        report.dpdp_compliance.risk_level,
     )
 
     return report

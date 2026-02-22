@@ -1,115 +1,74 @@
-"""Pydantic models for Module 3 — Industry Benchmarking & Competitiveness Analyzer."""
+"""Pydantic models for Module 3 — Workflow Bottleneck & Speed Analyzer.
+
+FoundationIQ 3.0 (Startup Edition)
+
+Metrics produced:
+    Metric 11 — TAT Improvement %          (avg_tat_improvement_pct)
+    Metric 4  — Bottleneck Reduction Potential  (total_hours_saved)
+"""
 
 from __future__ import annotations
-
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
 
-MarketPosition = Literal["Below Market", "Competitive", "Premium", "Uncompetitive"]
-LLMConfidence = Literal["High", "Medium", "Low"]
+class InquiryTAT(BaseModel):
+    """Turnaround-time record for a single sales inquiry."""
+
+    inquiry_id: str
+    inquiry_date: str
+    payment_date: str | None = None
+    tat_hours: float | None = None     # None when payment_date is missing
+    is_bottleneck: bool = False
+    status: str = ""
 
 
-class BenchmarkRequest(BaseModel):
-    """Input supplied by the client for a benchmarking run."""
+class BottleneckReport(BaseModel):
+    """Full Workflow Bottleneck & Speed Analysis report — Module 3.
 
-    session_id: str = Field(..., description="session_id from Module 1 /ingest/tabular")
-    product_name: str = Field(..., description="Name of your product or service")
-    price: float = Field(..., gt=0, description="Your current selling price")
-    currency: str = Field("INR", description="Currency code, e.g. INR, USD")
-    features: list[str] = Field(
-        ...,
-        min_length=1,
-        max_length=10,
-        description="3–5 key features or selling points",
-    )
-    category: str = Field(
-        ...,
-        description=(
-            "Product/service category. Supported: "
-            "hotel, restaurant, electronics, apparel, saas, consulting"
-        ),
-    )
-    region: str | None = Field(None, description="Target market region, e.g. 'Mumbai', 'India'")
-
-
-class CompetitorSnapshot(BaseModel):
-    """A single competitor entry from the market dataset."""
-
-    competitor_name: str
-    product_name: str
-    price: float
-    features: str
-    rating: float | None = None
-
-
-class MarketStats(BaseModel):
-    """Descriptive statistics computed from the filtered market dataset."""
-
-    sample_size: int = Field(..., description="Number of comparable competitors found")
-    avg_price: float
-    min_price: float
-    max_price: float
-    median_price: float
-    price_std: float
-
-
-class BenchmarkReport(BaseModel):
-    """Full competitiveness report — stats layer + LLM strategy layer."""
+    Only closed inquiries (those with a Payment_Date) contribute to TAT
+    statistics.  Pending / Lost rows are counted but excluded from the
+    avg / median / max / min calculations.
+    """
 
     session_id: str
-    product_name: str
-    user_price: float
-    currency: str
-    category: str
+    source_file: str = "sales_inquiries.csv"
 
-    # --- Stats layer (always present) ------------------------------------
-    market_stats: MarketStats
-    price_percentile: float = Field(
-        ...,
-        description="How many competitors you are cheaper than (0–100)",
-        ge=0.0,
-        le=100.0,
-    )
-    price_position: MarketPosition = Field(
-        ...,
-        description=(
-            "Below Market <25th pct · Competitive 25–75th · "
-            "Premium 75–90th · Uncompetitive >90th"
-        ),
-    )
-    price_gap_pct: float = Field(
-        ...,
-        description="% difference vs market average (negative = below average)",
-    )
-    feature_match_score: float = Field(
-        ...,
-        description="Keyword overlap with top competitors' features (0–100)",
-        ge=0.0,
-        le=100.0,
-    )
-    top_competitors: list[CompetitorSnapshot]
+    # ── Dataset overview ─────────────────────────────────────────────────
+    total_inquiries: int
+    closed_inquiries: int       # rows that have a Payment_Date
 
-    # --- LLM strategy layer (None if Gemini call failed) -----------------
-    competitiveness_score: int | None = Field(
-        None,
-        description="0–100 overall competitiveness score from Gemini",
-        ge=0,
-        le=100,
-    )
-    strategic_recommendation: str | None = Field(
-        None,
-        description="Gemini's pricing and positioning strategy advice",
-    )
-    suggested_price: float | None = Field(
-        None,
-        description="Gemini's recommended optimal price point",
-    )
-    key_insights: list[str] = Field(
-        default_factory=list,
-        description="3–5 key takeaways from Gemini's analysis",
-    )
-    llm_confidence: LLMConfidence | None = None
+    # ── TAT statistics (hours, closed inquiries only) ────────────────────
+    avg_tat_hours: float
+    median_tat_hours: float
+    max_tat_hours: float
+    min_tat_hours: float
 
+    # ── Bottleneck analysis ──────────────────────────────────────────────
+    bottleneck_threshold_hours: float = Field(
+        48.0, description="TAT above this value is flagged as a bottleneck"
+    )
+    bottleneck_count: int       # inquiries whose TAT > threshold
+    bottleneck_pct: float       # % of closed inquiries that are bottlenecks
+
+    # ── Automation impact (Metric 11 + Metric 4) ─────────────────────────
+    automation_target_hours: float = Field(
+        2.0, description="Target TAT if manual handoff is replaced by API trigger"
+    )
+    avg_tat_improvement_pct: float = Field(
+        ..., description="Metric 11 — % TAT reduction achievable with automation"
+    )
+    total_hours_saved: float = Field(
+        ..., description="Metric 4 — total hours cut across all closed inquiries"
+    )
+    avg_hours_saved_per_inquiry: float
+
+    # ── Per-inquiry breakdown ─────────────────────────────────────────────
+    inquiry_tat_list: list[InquiryTAT] = Field(default_factory=list)
+
+    # ── Visual output ─────────────────────────────────────────────────────
+    mermaid_flowchart: str = ""
+
+    # ── Narrative ─────────────────────────────────────────────────────────
+    recommendations: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

@@ -1,79 +1,85 @@
-# FoundationIQ — Gradio Test Cheat Sheet
+# FoundationIQ 3.0 — Gradio Test Cheat Sheet (SkillSphere India)
 
 Use this file alongside the Gradio UI at http://localhost:7860
 
 ---
 
-## TAB 1 — Module 1a · Tabular Ingestion
+## TAB 1 — Module 1 · Startup Ingestion
 
-Upload file:      test_data/sales_data.csv
+Fill in the onboarding form with the following values (or POST `test_data/onboarding_payload.json`):
 
-Workflow description (paste the whole block):
-"""
-Every morning the kitchen manager checks stock manually and writes it in a paper logbook.
-The owner then calls each supplier individually over WhatsApp to place orders verbally.
-Reservations are taken by phone and recorded in a paper diary — double-bookings happen often.
-Waiters take orders on handwritten notepads and walk them to the kitchen board.
-The cashier manually calculates bills with a calculator and writes on blank receipt templates.
-At closing, the owner manually enters the day's sales totals into an Excel spreadsheet.
-At month-end, paper invoices are handed to an external accountant for reconciliation in Tally.
-"""
+  Company Name:              SkillSphere India
+  Startup Sub-type:          SaaS
+  MRR — 3 months ago (INR): 1200000
+  MRR — 2 months ago (INR): 1350000
+  MRR — last month (INR):   1500000
+  Growth goal (%):           15
+  Months willing to wait:    3
+  Tech Stack (comma-sep):    Razorpay, Zoho CRM, Google Workspace, Slack, Mailchimp
 
-Industry:         Restaurant
-Employees:        18
-Tools (comma-separated):
-  Excel, WhatsApp, Google Pay, PhonePe, Tally
-
----
-
-## TAB 2 — Module 1b · Document Ingestion
-
-Upload file:      test_data/restaurant_sop.txt
-Document type:    sop
-
----
-
-## TAB 3 — Module 2 · Data Quality
-
-session_id:       <copy the session_id returned by Module 1a>
+Upload CSVs:
+  Org Chart:        test_data/org_chart.csv
+  Expenses:         test_data/expenses.csv
+  Sales Inquiries:  test_data/sales_inquiries.csv
 
 Expected results:
-  - Completeness will be penalised (missing Customer Name, unit_price, quantity, payment_method)
-  - Deduplication will be penalised (rows 1001 & 1011 are identical; 1002 & 1012 are identical)
-  - Consistency will be penalised (mixed column name styles: "Customer Name", "Product Name" vs lowercase)
-  - Structural Integrity penalised (row 1020 has "January 14 2024" — unparsed date format)
-  - Overall AI readiness: expect Moderate or Low
+  - MRR trend: Growing (12L → 13.5L → 15L, ~11.8% MoM)
+  - Tech stack maturity: Moderate (no BI / data warehouse tooling)
+  - DPDP risk on sales_inquiries.csv: CRITICAL (raw +91 phone numbers + personal emails)
+  - Data quality score: ~85% (missing Payment_Date & Amount_INR on 3 rows)
 
 ---
 
-## TAB 4 — Module 3 · Industry Benchmarking
+## TAB 2 — Module 2 · Data Quality & DPDP Scanner
 
-session_id:       <copy the session_id returned by Module 1a>
+session_id:  <copy the session_id returned by Module 1>
 
-Product / Service name:   Spice Garden Dine-In Experience
-Your price (INR):         280
-Currency:                 INR
+Expected results:
+  - sales_inquiries.csv: DPDP CRITICAL — Customer_Email and Customer_Phone contain raw PII
+  - Completeness penalised: Payment_Date and Amount_INR missing on INQ003, INQ006, INQ009
+  - INQ006 also missing Customer_Phone (additional completeness hit)
+  - org_chart.csv: clean — no PII columns detected
+  - expenses.csv: clean — no PII columns detected
+
+---
+
+## TAB 3 — Module 3 · Industry Benchmarking
+
+session_id:  <copy the session_id returned by Module 1>
+
+Product / Service name:  SkillSphere LMS (B2B SaaS)
+Your price (INR):        4999
+Currency:                INR
 Features (comma-separated):
-  dine-in, delivery, online ordering, GST billing, parking, AC seating, veg menu, non-veg menu
-Category:                 restaurant
+  AI personalisation, SCORM support, white-labelling, mobile app, analytics dashboard,
+  SSO, Zoho CRM integration, Razorpay billing, multi-tenant, custom certificates
+Category:                edtech
 
 Expected results:
-  - Market position compared to 11 restaurant competitors in dataset
-  - Gemini strategy recommendation on pricing and differentiation
-  - Feature match score based on keyword overlap
+  - Competitiveness score relative to B2B EdTech/SaaS peers
+  - Gemini strategy recommendation on pricing and positioning
+  - Key insights on growth levers for ₹15L MRR → ₹17.25L target
 
 ---
 
-## INTENTIONAL DATA ISSUES IN sales_data.csv
+## INTENTIONAL DATA ISSUES IN sales_inquiries.csv
 
-Issue                           Rows / Columns
+Issue                              Rows
 -----------------------------------------------------
-Missing Customer Name           1006, 1014, 1022
-Missing unit_price              1007
-Missing total_amount            1015
-Missing quantity                1019
-Missing payment_method          1009, 1022
-Duplicate rows                  1011 = 1001 · 1012 = 1002
-Whitespace in Customer Name     1005 " Deepak Verma ", 1016 " Ravi Tiwari"
-Unparsed date                   1020 "January 14 2024" (not ISO format)
-Inconsistent column names       "Customer Name", "Product Name", "Order Date" (title case vs lowercase)
+PII — personal email addresses     All rows (Customer_Email)
+PII — Indian mobile numbers (+91)  INQ001–INQ005, INQ007–INQ010
+Missing Payment_Date               INQ003, INQ006, INQ009
+Missing Amount_INR                 INQ003, INQ006, INQ009
+Missing Customer_Phone             INQ006
+Bottleneck (TAT > 48 hrs)         INQ002 (118h), INQ005 (98h), INQ008 (95h)
+
+---
+
+## INTENTIONAL DATA ISSUES IN org_chart.csv
+
+Issue                              Notes
+-----------------------------------------------------
+High automation candidates         EMP006, EMP007 (SDR) — repetitive outreach
+                                   EMP008, EMP009 (Support) — FAQ / ticket handling
+                                   EMP010 (HR Admin) — payroll & leave management
+Salary savings if automated:       ₹1,30,000/month (EMP006+EMP007+EMP010)

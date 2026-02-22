@@ -21,22 +21,40 @@ from app.core.config import settings
 
 @dataclass
 class SessionEntry:
-    """All artefacts produced across all module runs for one session."""
+    """All artefacts produced across all module runs for one session.
 
-    raw_dataframe: pd.DataFrame | None    # None for document-type sessions
-    workflow_text: str                   # Whitespace-normalised workflow description
-    company_metadata: dict
-    data_issues: list                    # list[DataIssue] — avoid circular import
-    workflow_analysis: object | None     # WorkflowDiagram | None  (Module 1/3)
-    quality_report: object | None = None   # QualityReport | None    (Module 2)
-    benchmark_report: object | None = None  # BenchmarkReport | None  (Module 3)
-    automation_report: object | None = None  # AutomationReport | None (Module 4)
-    consolidation_report: object | None = None  # ConsolidationReport | None (Module 5)
-    roi_report: object | None = None  # ROIReport | None (Module 6)
-    # Which supplementary document types were uploaded alongside the sales data
-    # Values: "sales" | "invoices" | "payroll" | "inventory"
+    FoundationIQ 3.0 — Startup Edition fields:
+      startup_profile   – 8-question onboarding answers (dict)
+      org_chart_df      – org_chart.csv as DataFrame
+      expenses_df       – expenses.csv as DataFrame
+      sales_inquiries_df– sales_inquiries.csv as DataFrame
+    Legacy fields kept for backward compat until remaining modules migrate.
+    """
+
+    # --- Module 1: Startup Ingestion & Profiling ---
+    startup_profile: dict = field(default_factory=dict)
+    org_chart_df: pd.DataFrame | None = None
+    expenses_df: pd.DataFrame | None = None
+    sales_inquiries_df: pd.DataFrame | None = None
+    profile_analysis: object | None = None  # StartupProfileAnalysis | None
+
+    # Aggregate data issues across all uploaded CSVs
+    data_issues: list = field(default_factory=list)
+
+    # Legacy — kept so downstream modules don't break during migration
+    raw_dataframe: pd.DataFrame | None = None
+    workflow_text: str = ""
+    company_metadata: dict = field(default_factory=dict)
+    workflow_analysis: object | None = None  # WorkflowDiagram | None
+
+    # --- Module 2+: downstream reports ---
+    quality_report: object | None = None
+    benchmark_report: object | None = None
+    automation_report: object | None = None
+    financial_report: object | None = None
+    retention_report: object | None = None
+    roi_report: object | None = None
     documents_provided: list = field(default_factory=list)
-    # Basic stats for each supplementary doc: {"invoices": {"readable": True, "row_count": 150, ...}}
     supplementary_doc_stats: dict = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
 
@@ -54,10 +72,16 @@ class SessionStore:
 
     def create(
         self,
-        raw_dataframe: pd.DataFrame | None,
-        workflow_text: str,
-        company_metadata: dict,
-        data_issues: list,
+        startup_profile: dict | None = None,
+        org_chart_df: pd.DataFrame | None = None,
+        expenses_df: pd.DataFrame | None = None,
+        sales_inquiries_df: pd.DataFrame | None = None,
+        profile_analysis: object | None = None,
+        data_issues: list | None = None,
+        # Legacy params — kept for backward compat during migration
+        raw_dataframe: pd.DataFrame | None = None,
+        workflow_text: str = "",
+        company_metadata: dict | None = None,
         workflow_analysis: object | None = None,
         documents_provided: list | None = None,
         supplementary_doc_stats: dict | None = None,
@@ -66,12 +90,17 @@ class SessionStore:
         self._evict_expired()
         session_id = uuid.uuid4().hex
         self._store[session_id] = SessionEntry(
+            startup_profile=startup_profile or {},
+            org_chart_df=org_chart_df,
+            expenses_df=expenses_df,
+            sales_inquiries_df=sales_inquiries_df,
+            profile_analysis=profile_analysis,
+            data_issues=data_issues or [],
             raw_dataframe=raw_dataframe,
             workflow_text=workflow_text,
-            company_metadata=company_metadata,
-            data_issues=data_issues,
+            company_metadata=company_metadata or startup_profile or {},
             workflow_analysis=workflow_analysis,
-            documents_provided=documents_provided or ["sales"],
+            documents_provided=documents_provided or [],
             supplementary_doc_stats=supplementary_doc_stats or {},
         )
         return session_id

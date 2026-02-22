@@ -25,12 +25,8 @@ Design philosophy
 from __future__ import annotations
 
 import re
-from collections import Counter
-from typing import Any
-
 from app.core.session_store import SessionEntry
-from app.schemas.automation import AutomationCandidate, AutomationReport
-from app.schemas.consolidation import ConsolidationReport, MigrationStep
+from app.schemas.automation import RoleAnalysis, AutomationReport
 from app.schemas.roi import (
     Assumption,
     AutomationROILine,
@@ -189,98 +185,88 @@ def _build_assumptions(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Automation ROI lines — with diminishing returns + keyword scaling
+# Automation ROI lines — role-based (Module 4 Role Auditor output)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _keyword_time_scale(description: str) -> float:
-    """Return a multiplier (0.5–1.3) based on step description complexity."""
-    if _HEAVY_KEYWORDS.search(description):
-        return 1.3
-    if _LIGHT_KEYWORDS.search(description):
-        return 0.5
-    return 0.8  # default: slightly below base (conservative)
+
+# Implementation cost by vulnerability level (INR, one-time)
+_IMPL_COST_BY_VULN: dict[str, int] = {
+    "High":   20_000,   # standard tooling / RPA bot
+    "Medium": 30_000,   # some customisation required
+    "Low":    50_000,   # strategic/creative — complex to automate
+}
+
+# Automation type heuristics for roles
+_AIML_KEYWORDS = re.compile(
+    r"data analyst|data scientist|data engineer|bi analyst|analytics", re.I
+)
+_API_KEYWORDS = re.compile(
+    r"developer|engineer|cto|devops|backend|frontend|software", re.I
+)
+_DIGITAL_FORM_KEYWORDS = re.compile(
+    r"hr|human resource|payroll|admin|receptionist|support|helpdesk|sdr|bdr", re.I
+)
 
 
-def _get_diminishing_multiplier(index: int) -> float:
-    """Return the diminishing-returns multiplier for the Nth step (0-based)."""
-    if index < len(_DIMINISHING_MULTIPLIERS):
-        return _DIMINISHING_MULTIPLIERS[index]
-    return _DIMINISHING_FLOOR
-
-
-def _get_api_cost(description: str) -> float:
-    """Return implementation cost for API Integration based on complexity."""
-    if _COMPLEX_API_KEYWORDS.search(description):
-        return _COMPLEX_API_COST
-    return _IMPLEMENTATION_COST_BY_TYPE["API Integration"]
+def _role_automation_type(job_title: str) -> str:
+    """Map a job title to the most appropriate automation type."""
+    if _AIML_KEYWORDS.search(job_title):
+        return "AI/ML"
+    if _API_KEYWORDS.search(job_title):
+        return "API Integration"
+    if _DIGITAL_FORM_KEYWORDS.search(job_title):
+        return "Digital Form"
+    return "RPA"
 
 
 def _compute_automation_lines(
-    candidates: list[AutomationCandidate],
+    roles: list[RoleAnalysis],
     hourly_wage: float,
 ) -> list[AutomationROILine]:
-    """Generate ROI line items with diminishing returns per automation type.
+    """Generate ROI line items from role-audit results.
 
-    Steps are grouped by automation type.  Within each group, the first step
-    gets the full base hours; subsequent steps get less because activities
-    overlap (same person, related work).
+    Each High/Medium vulnerability role becomes one ROI line item.
+    Low-vulnerability roles (<30% automation potential) are excluded
+    because the ROI is minimal and implementation is not justified.
     """
-    # Separate candidates by whether they're actionable
-    actionable = [c for c in candidates if c.is_candidate]
+    # Only include High and Medium vulnerability roles
+    actionable = [r for r in roles if r.vulnerability_level in ("High", "Medium")]
     if not actionable:
         return []
 
-    # Count how many of each type we've seen (for diminishing returns)
-    type_counter: Counter = Counter()
-
-    # Sort by priority then step number for deterministic ordering
-    priority_order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+    # Sort: High vulnerability first, then by automation_pct desc
+    vuln_order = {"High": 0, "Medium": 1, "Low": 2}
     actionable_sorted = sorted(
         actionable,
-        key=lambda c: (priority_order.get(c.priority, 4), c.step_number),
+        key=lambda r: (vuln_order.get(r.vulnerability_level, 2), -r.automation_pct),
     )
 
     lines: list[AutomationROILine] = []
 
-    for c in actionable_sorted:
-        atype = c.automation_type
-        base_hours = _BASE_HOURS_BY_TYPE.get(atype, 0.5)
-
-        # Apply keyword-based scaling
-        keyword_scale = _keyword_time_scale(c.description)
-
-        # Apply diminishing returns
-        nth = type_counter[atype]
-        type_counter[atype] += 1
-        dim_mult = _get_diminishing_multiplier(nth)
-
-        current_hours = round(base_hours * keyword_scale * dim_mult, 2)
-        # Floor: at least 0.10 hrs/wk (6 min) for any real candidate
-        current_hours = max(0.10, current_hours)
-
-        efficiency = _EFFICIENCY_BY_TYPE.get(atype, 0.5)
-        saved_hours = round(current_hours * efficiency, 2)
+    for idx, role in enumerate(actionable_sorted, start=1):
+        atype = _role_automation_type(role.job_title)
+        saved_hours = round(role.hours_saved_per_week, 2)
         annual_hours = round(saved_hours * _WORKING_WEEKS_PER_YEAR, 1)
-        annual_cost = round(annual_hours * hourly_wage, 0)
+        # Cost saving: proportion of fully-loaded annual salary
+        annual_cost = round(role.monthly_salary_inr * 12 * role.automation_pct / 100, 0)
+        current_hours = round(role.hours_per_week, 2)
 
-        # Implementation cost (API integration is context-aware)
-        if atype == "API Integration":
-            impl_cost = _get_api_cost(c.description)
-        else:
-            impl_cost = _IMPLEMENTATION_COST_BY_TYPE.get(atype, 10_000)
-
-        # If this is the Nth tool of the same type, only the 1st needs
-        # full setup; subsequent ones share the platform (50% discount).
-        if nth >= 1:
-            impl_cost = round(impl_cost * 0.50)
+        impl_cost = _IMPL_COST_BY_VULN.get(role.vulnerability_level, 30_000)
 
         payback = None
         if impl_cost > 0 and annual_cost > 0:
             payback = round(impl_cost / (annual_cost / 12), 1)
 
+        # Map vulnerability level → effort and priority
+        effort_map = {"High": "Low", "Medium": "Medium", "Low": "High"}
+        priority_map = {"High": "Critical", "Medium": "High", "Low": "Low"}
+
+        tasks_preview = ", ".join(role.automatable_tasks[:2])
+        description = f"[{role.job_title}] {tasks_preview}"[:100]
+
         lines.append(AutomationROILine(
-            step_number=c.step_number,
-            description=c.description[:100],
+            step_number=idx,
+            description=description,
             automation_type=atype,
             current_hours_per_week=current_hours,
             hours_saved_per_week=saved_hours,
@@ -288,8 +274,8 @@ def _compute_automation_lines(
             annual_cost_saved=annual_cost,
             implementation_cost=impl_cost,
             payback_months=payback,
-            effort=c.estimated_effort,
-            priority=c.priority,
+            effort=effort_map.get(role.vulnerability_level, "Medium"),
+            priority=priority_map.get(role.vulnerability_level, "High"),
         ))
 
     # Sort by annual savings descending (highest ROI first)
@@ -557,22 +543,19 @@ def compute_roi_report(
     session_id: str,
     entry: SessionEntry,
 ) -> ROIReport:
-    """Compute ROI projections from Module 4 (automation) and Module 5
-    (consolidation) results.
+    """Compute ROI projections from Module 4 (automation) results.
 
-    Requires at least one of automation_report or consolidation_report
-    to be populated in the session.
+    Requires automation_report to be populated in the session.
 
     Raises:
-        ValueError: if neither Module 4 nor Module 5 has been run.
+        ValueError: if Module 4 has not been run.
     """
     auto_report: AutomationReport | None = entry.automation_report
-    consol_report: ConsolidationReport | None = entry.consolidation_report
 
-    if auto_report is None and consol_report is None:
+    if auto_report is None:
         raise ValueError(
-            "Cannot compute ROI without Module 4 (Automation) or Module 5 "
-            "(Consolidation) results. Run at least one of those first."
+            "Cannot compute ROI without Module 4 (Automation) results. "
+            "Run Module 4 (Role Auditor) first."
         )
 
     num_employees = entry.company_metadata.get("num_employees", 5)
@@ -583,17 +566,12 @@ def compute_roi_report(
 
     # --- Automation ROI lines ---
     auto_lines: list[AutomationROILine] = []
-    if auto_report is not None:
-        auto_lines = _compute_automation_lines(
-            auto_report.candidates, hourly_wage,
-        )
+    auto_lines = _compute_automation_lines(
+        auto_report.roles, hourly_wage,
+    )
 
-    # --- Consolidation ROI lines ---
+    # --- Consolidation lines are no longer computed (Module 5 rearchitected) ---
     consol_lines: list[ConsolidationROILine] = []
-    if consol_report is not None:
-        consol_lines = _compute_consolidation_lines(
-            consol_report.migration_steps, hourly_wage,
-        )
 
     # --- Summary ---
     summary = _compute_summary(auto_lines, consol_lines)

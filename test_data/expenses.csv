@@ -1,0 +1,11 @@
+Expense_ID,Date,Category,Vendor,Amount_INR,Recurring_Flag
+EXP101,2026-01-01,Cloud Hosting,AWS India,45000,Yes
+EXP102,2026-01-03,Marketing,Google Ads,85000,Yes
+EXP103,2026-01-05,Office Rent,WeWork Bengaluru,120000,Yes
+EXP104,2026-01-10,Software,Zoho CRM,15000,Yes
+EXP105,2026-01-12,Payment Gateway,Razorpay Fees,18000,Yes
+EXP106,2026-01-15,Travel,IndiGo Airlines,22000,No
+EXP107,2026-01-20,Software,Mailchimp,8000,Yes
+EXP108,2026-01-25,Legal,Khaitan & Co,50000,No
+EXP109,2026-02-01,Cloud Hosting,AWS India,47000,Yes
+EXP110,2026-02-03,Marketing,Google Ads,90000,Yes

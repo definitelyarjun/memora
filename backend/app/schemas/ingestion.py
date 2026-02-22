@@ -1,4 +1,11 @@
-"""Pydantic models for the Data Ingestion module (Module 1)."""
+"""Pydantic models for Module 1 — Startup Ingestion & Profiling.
+
+FoundationIQ 3.0 (Startup Edition)
+Accepts an 8-field onboarding form + up to 3 CSV uploads:
+  - org_chart.csv     (roles, salaries, headcount)
+  - expenses.csv      (monthly software / operational costs)
+  - sales_inquiries.csv (inquiry date, payment date, repeat-customer tags)
+"""
 
 from __future__ import annotations
 
@@ -9,18 +16,48 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
-# Company metadata
+# Startup onboarding profile (replaces old CompanyMetadata)
 # ---------------------------------------------------------------------------
 
-class CompanyMetadata(BaseModel):
-    """Basic company profile supplied alongside the upload."""
+class StartupProfile(BaseModel):
+    """8-question onboarding form answers for a tech startup."""
 
-    industry: str = Field(..., examples=["Retail"])
-    num_employees: int = Field(..., ge=1, examples=[50])
-    tools_used: list[str] = Field(
-        default_factory=list,
-        examples=[["Excel", "Google Sheets", "WhatsApp"]],
+    company_name: str = Field(..., examples=["Acme SaaS"])
+    sub_type: Literal["EdTech", "FinTech", "SaaS", "E-commerce"] = Field(
+        ..., description="Startup vertical"
     )
+    mrr_last_3_months: list[float] = Field(
+        ...,
+        min_length=3,
+        max_length=3,
+        description="Monthly recurring revenue for past 3 months (₹), newest last",
+        examples=[[80000, 95000, 110000]],
+    )
+    monthly_growth_goal_pct: float = Field(
+        ..., ge=0, le=500,
+        description="Target month-on-month growth percentage",
+        examples=[15.0],
+    )
+    patience_months: int = Field(
+        ..., ge=1, le=60,
+        description="How many months the founder is willing to wait for ROI",
+        examples=[6],
+    )
+    current_tech_stack: list[str] = Field(
+        default_factory=list,
+        description="Tools / platforms currently in use",
+        examples=[["Stripe", "Zapier", "Google Sheets", "Freshdesk"]],
+    )
+    num_employees: int = Field(..., ge=1, examples=[12])
+    industry: str = Field(
+        default="Technology",
+        description="High-level industry label (defaults to Technology)",
+    )
+
+
+# Legacy alias so downstream modules that import CompanyMetadata still work
+# until they are migrated.  StartupProfile is a superset.
+CompanyMetadata = StartupProfile
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +85,7 @@ class IssueType(str, Enum):
     UNPARSED_DATES = "unparsed_dates"
     MIXED_DTYPES = "mixed_dtypes"
     WHITESPACE_IN_STRINGS = "whitespace_in_strings"
+    MISSING_EXPECTED_COLUMNS = "missing_expected_columns"
 
 
 class DataIssue(BaseModel):
@@ -61,7 +99,7 @@ class DataIssue(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Workflow analysis (from LLM)
+# Workflow analysis (from LLM) — kept for backward compat; Module 3 uses it
 # ---------------------------------------------------------------------------
 
 class WorkflowStep(BaseModel):
@@ -85,32 +123,67 @@ class WorkflowDiagram(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Per-file ingestion summary
+# ---------------------------------------------------------------------------
+
+class FileIngestionSummary(BaseModel):
+    """Summary of one uploaded CSV file after ingestion."""
+
+    filename: str
+    row_count: int
+    column_count: int
+    columns: list[ColumnInfo]
+    data_issues: list[DataIssue] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Startup profile analysis (LLM-generated)
+# ---------------------------------------------------------------------------
+
+class StartupProfileAnalysis(BaseModel):
+    """LLM-generated analysis of the startup's current state."""
+
+    mrr_trend: Literal["Growing", "Flat", "Declining"]
+    mrr_mom_growth_pct: float = Field(
+        ..., description="Average month-on-month MRR growth %"
+    )
+    growth_gap: str = Field(
+        ..., description="Comparison of actual vs target growth"
+    )
+    tech_stack_maturity: Literal["Early", "Developing", "Mature"]
+    key_observations: list[str] = Field(
+        ..., description="3-5 bullet-point observations about the startup"
+    )
+    recommended_focus_areas: list[str] = Field(
+        ..., description="Top 2-3 areas to investigate in subsequent modules"
+    )
+    executive_summary: str = Field(
+        ..., description="One-paragraph executive summary of the startup profile"
+    )
+
+
+# ---------------------------------------------------------------------------
 # API response
 # ---------------------------------------------------------------------------
 
 class IngestionResponse(BaseModel):
-    """Response returned after a successful ingestion run."""
+    """Response returned after a successful startup ingestion run."""
 
     session_id: str = Field(
         ..., description="Pass this to all subsequent module endpoints."
     )
-    # Raw data summary
-    row_count: int
-    column_count: int
-    columns: list[ColumnInfo]
-    # Detected issues (nothing was changed)
-    data_issues: list[DataIssue] = Field(
+    startup_profile: StartupProfile
+    profile_analysis: StartupProfileAnalysis | None = Field(
+        None, description="LLM-generated startup profile analysis"
+    )
+    # Per-file summaries (None if file not uploaded)
+    org_chart: FileIngestionSummary | None = None
+    expenses: FileIngestionSummary | None = None
+    sales_inquiries: FileIngestionSummary | None = None
+    # Aggregate stats
+    files_uploaded: list[str] = Field(
         default_factory=list,
-        description="Detected inconsistencies — all raw data is preserved as-is.",
+        description="Which CSV files were uploaded: org_chart, expenses, sales_inquiries",
     )
-    # Workflow analysis
-    workflow_text: str
-    workflow_analysis: WorkflowDiagram | None = Field(
-        None, description="Structured workflow + Mermaid diagram from LLM analysis"
-    )
-    company_metadata: CompanyMetadata
-    # Document coverage
-    documents_provided: list[str] = Field(
-        default_factory=list,
-        description="Which document types were uploaded: sales, invoices, payroll, inventory",
-    )
+    total_issues: int = Field(0, description="Total data issues across all files")
+    total_rows: int = Field(0, description="Total rows across all files")

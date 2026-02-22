@@ -1,17 +1,21 @@
-"""API router for Module 3 — Industry Benchmarking & Competitiveness Analyzer.
+"""API router for Module 3 — Workflow Bottleneck & Speed Analyzer.
+
+FoundationIQ 3.0 (Startup Edition)
 
 Endpoint:
-    POST /api/v1/analyze/benchmark
-        - Accepts a JSON body (BenchmarkRequest)
-        - Pulls company metadata from the session store (Module 1 output)
-        - Runs Pandas stats against the bundled market dataset
-        - Sends structured data to Gemini for strategic pricing advice
-        - Writes BenchmarkReport back into the session store
-        - Returns BenchmarkReport
+    POST /api/v1/analyze/bottleneck
+        - Accepts a JSON body with a session_id
+        - Reads sales_inquiries_df from the session store (ingested by Module 1)
+        - Calculates Turnaround Time (TAT) per inquiry using pandas
+        - Flags bottlenecks (TAT > 48 hours)
+        - Computes Metric 11 (TAT Improvement %) and Metric 4 (Hours Saved)
+        - Generates a Mermaid flowchart
+        - Stores BottleneckReport back into the session for Module 7
+        - Returns BottleneckReport
 
-Note: This module is independently callable — it does NOT require
-/analyze/quality to have run first. It only needs a valid session_id
-from /ingest/tabular (for company_metadata context).
+Prerequisites:
+    - A valid session_id from POST /api/v1/ingest/startup (Module 1)
+    - sales_inquiries.csv must have been uploaded in that session
 """
 
 from __future__ import annotations
@@ -19,39 +23,36 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.core.session_store import session_store
-from app.schemas.benchmark import BenchmarkReport, BenchmarkRequest
-from app.services.benchmark import run_benchmark
+from app.schemas.benchmark import BottleneckReport
+from app.services.benchmark import compute_bottleneck_report
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/analyze", tags=["Analysis — Benchmarking"])
+router = APIRouter(prefix="/api/v1/analyze", tags=["Analysis — Bottleneck"])
 
 
-@router.post("/benchmark", response_model=BenchmarkReport)
-def analyze_benchmark(request: BenchmarkRequest) -> BenchmarkReport:
-    """Benchmark a product/service against the market and generate pricing strategy.
+class BottleneckRequest(BaseModel):
+    session_id: str = Field(..., description="session_id from Module 1 /ingest/startup")
 
-    Stats layer (always runs — no LLM required)
-    -------------------------------------------
-    - Loads bundled market dataset for the requested category
-    - Computes market average, median, min, max, std
-    - Calculates your price percentile rank
-    - Scores your feature overlap with competitors (Jaccard similarity)
-    - Identifies the 5 closest competitors by price
 
-    LLM strategy layer (requires GEMINI_API_KEY)
-    ---------------------------------------------
-    - Sends all stats + top competitors to Gemini
-    - Returns: competitiveness score, strategic recommendation,
-      suggested optimal price, key insights
-    - If Gemini is unavailable → stats are still returned, LLM fields are null
+@router.post("/bottleneck", response_model=BottleneckReport)
+def analyze_bottleneck(request: BottleneckRequest) -> BottleneckReport:
+    """Analyze sales pipeline TAT to surface bottlenecks and automation savings.
 
-    Supported categories: hotel, restaurant, electronics, apparel, saas, consulting
+    Stats computed (all deterministic Pandas — no LLM required)
+    -----------------------------------------------------------
+    - Average / median / min / max TAT in hours (closed inquiries only)
+    - Bottleneck count and % (TAT > 48 hours)
+    - Metric 11: avg TAT improvement % if automation drops TAT to 2h
+    - Metric 4: total pipeline hours recoverable via automation
+    - Per-inquiry TAT table with bottleneck flags
+    - Mermaid TD flowchart showing bottleneck distribution
 
     The result is stored back in the session so Module 7 (Strategic Verdict)
-    can aggregate it with all other module outputs.
+    can incorporate it into the composite readiness score.
     """
     entry = session_store.get(request.session_id)
     if entry is None:
@@ -59,22 +60,32 @@ def analyze_benchmark(request: BenchmarkRequest) -> BenchmarkReport:
             status_code=404,
             detail=(
                 f"Session '{request.session_id}' not found or has expired. "
-                "Re-upload via /ingest/tabular to start a new session."
+                "Re-upload via /ingest/startup to start a new session."
             ),
         )
 
-    report = run_benchmark(request=request, entry=entry, session_id=request.session_id)
+    try:
+        report = compute_bottleneck_report(
+            session_id=request.session_id,
+            entry=entry,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    # Write back into session for Module 7 aggregation
+    # Store for Module 7 aggregation
     session_store.patch(request.session_id, benchmark_report=report)
 
     logger.info(
-        "Benchmark complete for session %s — category: %s, position: %s, "
-        "competitiveness: %s",
+        "Bottleneck analysis complete for session %s — "
+        "closed: %d/%d, bottlenecks: %d (%.0f%%), avg TAT: %.1fh, "
+        "hours saved: %.0f",
         request.session_id,
-        report.category,
-        report.price_position,
-        report.competitiveness_score,
+        report.closed_inquiries,
+        report.total_inquiries,
+        report.bottleneck_count,
+        report.bottleneck_pct,
+        report.avg_tat_hours,
+        report.total_hours_saved,
     )
 
     return report
