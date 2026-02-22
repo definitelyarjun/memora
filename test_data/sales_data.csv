@@ -1,0 +1,26 @@
+order_id,Customer Name,Product Name,category,quantity,unit_price,total_amount,Order Date,payment_method,status
+1001,Raj Kumar,Chicken Biryani,Food,2,280.00,560.00,2024-01-05,Cash,Completed
+1002,Priya Sharma,Paneer Tikka,Food,1,220.00,220.00,2024-01-05,UPI,Completed
+1003,Amit Singh,Cold Coffee,Beverages,3,120.00,360.00,2024-01-06,Card,Completed
+1004,Sunita Rao,Chicken Biryani,Food,1,280.00,280.00,2024-01-06,Cash,Completed
+1005, Deepak Verma ,Veg Thali,Food,2,180.00,360.00,2024-01-07,UPI,Pending
+1006,,Masala Chai,Beverages,5,40.00,200.00,2024-01-07,Cash,Completed
+1007,Kavita Nair,Pasta Arabiata,Food,1,,180.00,2024-01-08,Card,Completed
+1008,Rohit Jain,Cold Coffee,Beverages,2,120.00,240.00,2024-01-08,UPI,Completed
+1009,Meena Pillai,Paneer Tikka,Food,2,220.00,440.00,2024-01-09,,Completed
+1010,Arjun Das,Veg Thali,Food,3,180.00,540.00,2024-01-09,Cash,Completed
+1011,Raj Kumar,Chicken Biryani,Food,2,280.00,560.00,2024-01-05,Cash,Completed
+1012,Priya Sharma,Paneer Tikka,Food,1,220.00,220.00,2024-01-05,UPI,Completed
+1013,Sanjay Gupta,Masala Chai,Beverages,4,40.00,160.00,2024-01-10,Cash,Completed
+1014,,Cold Coffee,Beverages,1,120.00,120.00,2024-01-10,Card,Pending
+1015,Lakshmi Iyer,Chicken Biryani,Food,2,280.00,,2024-01-11,UPI,Completed
+1016, Ravi Tiwari,Pasta Arabiata,Food,1,180.00,180.00,2024-01-11,Cash,Completed
+1017,Nandini Joshi,Veg Thali,Food,1,180.00,180.00,2024-01-12,Card,Completed
+1018,Kiran Bhat,Masala Chai,Beverages,6,40.00,240.00,2024-01-12,UPI,Completed
+1019,Vikram Reddy,Paneer Tikka,Food,,220.00,440.00,2024-01-13,Cash,Completed
+1020,Anita Mehta,Cold Coffee,Beverages,2,120.00,240.00,January 14 2024,Card,Completed
+1021,Pratik Shah,Chicken Biryani,Food,1,280.00,280.00,2024-01-14,UPI,Completed
+1022,,Veg Thali,Food,2,180.00,360.00,2024-01-15,,Pending
+1023,Harish Kumar,Masala Chai,Beverages,3,40.00,120.00,2024-01-15,Cash,Completed
+1024,Divya Nair,Pasta Arabiata,Food,2,180.00,360.00,2024-01-16,Card,Completed
+1025,Suresh Pillai,Chicken Biryani,Food,1,280.00,280.00,2024-01-16,UPI,Completed

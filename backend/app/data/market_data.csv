@@ -1,0 +1,65 @@
+category,competitor_name,product_name,price,currency,features,rating,review_count,region
+hotel,Treebo Hotels,Standard Room,2200,INR,"AC WiFi breakfast TV",3.8,420,India
+hotel,OYO Rooms,Deluxe Room,1800,INR,"AC WiFi TV",3.5,1250,India
+hotel,FabHotels,Classic Room,2500,INR,"AC WiFi breakfast parking",4.0,380,India
+hotel,Zostel,Private Room,1200,INR,"WiFi locker common kitchen",4.2,890,India
+hotel,Bloom Hotels,Superior Room,3200,INR,"AC WiFi breakfast gym",4.1,210,India
+hotel,StayEasy,Standard Room,1500,INR,"AC WiFi",3.3,560,India
+hotel,Lemon Tree,Economy Room,4500,INR,"AC WiFi breakfast pool gym",4.3,670,India
+hotel,Red Fox Hotel,Standard Room,3800,INR,"AC WiFi breakfast business center",4.0,330,India
+hotel,Ginger Hotels,Smart Room,3000,INR,"AC WiFi TV gym",3.9,520,India
+hotel,ibis Budget,Standard Room,2800,INR,"AC WiFi TV",3.8,480,India
+hotel,Zostel Plus,Boutique Room,3500,INR,"AC WiFi breakfast rooftop terrace",4.4,290,India
+hotel,The Fern,Deluxe Room,5500,INR,"AC WiFi breakfast pool spa restaurant",4.5,180,India
+restaurant,Haldirams,Thali Meal,350,INR,"vegetarian unlimited refill AC seating",4.1,2300,India
+restaurant,Barbeque Nation,Buffet,850,INR,"buffet live grill AC alcohol unlimited",4.3,1800,India
+restaurant,Saravana Bhavan,Full Meals,280,INR,"vegetarian unlimited AC authentic South Indian",4.2,3100,India
+restaurant,Subway,Meal for Two,600,INR,"customizable fresh healthy fast",3.9,1500,India
+restaurant,Dominos,Meal for Two,700,INR,"pizza fast delivery AC seating",3.8,4500,India
+restaurant,Social,Meal for Two,1200,INR,"alcohol cocktails AC rooftop ambience",4.0,980,India
+restaurant,Punjab Grill,Meal for Two,1800,INR,"North Indian fine dining AC alcohol",4.4,420,India
+restaurant,Smoke House Deli,Meal for Two,2200,INR,"continental fine dining alcohol rooftop",4.3,310,India
+restaurant,Chaayos,Snack and Tea,250,INR,"tea cafe customizable AC fast",4.1,2100,India
+restaurant,Wow Momo,Meal for Two,400,INR,"momos fast casual AC delivery",3.7,1900,India
+restaurant,Truffles,Meal for Two,900,INR,"burgers fast casual AC delivery",4.2,1400,India
+electronics,boAt Rockerz,Bluetooth Earphones,1299,INR,"40h battery noise isolation foldable bass",4.1,85000,India
+electronics,JBL Tune,Bluetooth Earphones,2499,INR,"24h battery JBL sound hands-free wireless",4.2,32000,India
+electronics,Sony WH,Bluetooth Headphones,7999,INR,"30h battery noise cancellation foldable premium",4.5,18000,India
+electronics,Realme Buds,TWS Earbuds,1499,INR,"25h battery fast charge gaming mode",4.0,42000,India
+electronics,OnePlus Buds,TWS Earbuds,3999,INR,"30h battery noise cancellation fast pair",4.3,21000,India
+electronics,Noise Buds,TWS Earbuds,1199,INR,"24h battery IPX5 voice assistant",3.9,38000,India
+electronics,PTron Bassbuds,TWS Earbuds,799,INR,"20h battery stereo IPX4",3.6,62000,India
+electronics,Zebronics Zeb,TWS Earbuds,999,INR,"18h battery voice control compact",3.7,29000,India
+electronics,Sennheiser CX,In-Ear Wired,2299,INR,"premium sound passive noise isolation wired",4.4,9500,India
+electronics,Mi Smart Band,Fitness Band,2499,INR,"14d battery heart rate sleep tracker display",4.2,95000,India
+electronics,Fastrack Reflex,Fitness Band,3499,INR,"7d battery heart rate SpO2 water resistant",4.0,22000,India
+apparel,Fabindia,Kurta,1200,INR,"cotton handloom ethnic sustainable India",4.3,3800,India
+apparel,Manyavar,Sherwani,8999,INR,"festive premium embroidered ethnic designer",4.5,1200,India
+apparel,Max Fashion,Casual Shirt,699,INR,"cotton casual everyday comfortable",3.8,6500,India
+apparel,Westside,Formal Shirt,999,INR,"cotton formal office slim fit",4.0,4200,India
+apparel,H&M India,T-Shirt,799,INR,"cotton casual comfortable international brand",4.1,12000,India
+apparel,Biba,Salwar Set,2200,INR,"cotton ethnic festive comfortable",4.2,2900,India
+apparel,Aurelia,Kurta Set,1800,INR,"cotton ethnic office casual",4.1,3400,India
+apparel,Van Heusen,Formal Shirt,1299,INR,"cotton formal office wrinkle-free",4.2,7800,India
+apparel,UCB,Casual T-Shirt,1499,INR,"cotton casual international brand premium",4.3,5600,India
+apparel,Zara India,Dress,3500,INR,"trendy international designer premium",4.4,2100,India
+saas,Zoho CRM,CRM per user,1299,INR,"sales pipeline email automation reports",4.2,8500,India
+saas,Freshsales,CRM per user,1800,INR,"AI scoring email phone automation",4.3,4200,India
+saas,Leadsquared,CRM per user,2500,INR,"marketing automation lead capture analytics",4.1,2100,India
+saas,HubSpot Starter,CRM per user,3500,INR,"marketing sales service hub analytics",4.4,6800,India
+saas,Tally Prime,Accounting,1500,INR,"GST invoicing payroll inventory reports",4.5,45000,India
+saas,QuickBooks,Accounting per user,2000,INR,"invoicing expense tracking bank sync reports",4.2,3200,India
+saas,myBiz,Expense Management,800,INR,"travel expense approval reports GST",3.9,1800,India
+saas,Darwinbox,HRMS per user,1200,INR,"payroll attendance leave recruitment",4.1,2900,India
+saas,greytHR,HRMS per user,995,INR,"payroll statutory compliance attendance",4.0,5600,India
+saas,Razorpay,Payment Gateway,1000,INR,"payments APIs smart collect invoicing",4.4,12000,India
+consulting,Deloitte,Business Consulting,12000,INR,"strategy management audit tax advisory",4.6,850,India
+consulting,EY,Business Consulting,10000,INR,"assurance tax advisory transactions",4.5,920,India
+consulting,KPMG,Business Consulting,11000,INR,"audit tax consulting advisory",4.5,780,India
+consulting,PWC,Business Consulting,13000,INR,"assurance advisory tax deals",4.6,840,India
+consulting,McKinsey,Strategy Consulting,18000,INR,"strategy operations analytics digital",4.8,210,India
+consulting,Freelance Senior,IT Consulting,3000,INR,"development architecture cloud DevOps",4.0,180,India
+consulting,Freelance Mid,IT Consulting,1800,INR,"development web mobile",3.8,350,India
+consulting,Local Agency,Marketing,1500,INR,"social media content SEO ads",3.9,420,India
+consulting,Boutique Agency,Marketing,3500,INR,"brand strategy digital performance analytics",4.2,190,India
+consulting,NowFloats,SME Digital,2500,INR,"website SEO social media local",3.7,890,India
